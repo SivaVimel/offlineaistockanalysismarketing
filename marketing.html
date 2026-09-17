@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Offline AI Stock Analysis — every number, back to its filing</title>
+<meta name="description" content="Twelve years of SEC filings on one screen. No account, no subscription, no telemetry. Works offline.">
+<meta name="color-scheme" content="light dark">
+<style>
+  /* ── Palette ─────────────────────────────────────────────────
+     The app's own values. Dark is the design and light is the
+     accommodation, exactly as in Theme.swift.                     */
+  :root{
+    --bg:#F7F8FC; --text:#0F1319; --text2:#4B5361; --text3:#7C8593;
+    --accent:#3D5AFE; --accent2:#2B45D6; --accentSoft:rgba(61,90,254,.10);
+    --pos:#0E9F6E; --neg:#E02424;
+    --glass:rgba(255,255,255,.66);
+    --glass2:rgba(255,255,255,.80);
+    --edge:rgba(15,19,25,.09);
+    --sheen:rgba(255,255,255,.92);
+    --shadow:0 1px 0 var(--sheen) inset, 0 10px 30px rgba(15,19,25,.07);
+    --shadowUp:0 1px 0 var(--sheen) inset, 0 18px 44px rgba(15,19,25,.12);
+    --aur1:rgba(61,90,254,.20); --aur2:rgba(14,116,144,.13); --aur3:rgba(107,133,255,.20);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#000000; --text:#FFFFFF; --text2:#A6ADBA; --text3:#737B87;
+      --accent:#6B85FF; --accent2:#8AA0FF; --accentSoft:rgba(107,133,255,.14);
+      --pos:#31C48D; --neg:#F98080;
+      --glass:rgba(255,255,255,.055);
+      --glass2:rgba(255,255,255,.085);
+      --edge:rgba(255,255,255,.10);
+      --sheen:rgba(255,255,255,.07);
+      --shadow:0 1px 0 var(--sheen) inset, 0 14px 36px rgba(0,0,0,.45);
+      --shadowUp:0 1px 0 var(--sheen) inset, 0 22px 52px rgba(0,0,0,.6);
+      --aur1:rgba(107,133,255,.26); --aur2:rgba(63,208,207,.13); --aur3:rgba(43,63,212,.24);
+    }
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%;background:var(--bg)}
+
+  /* The ambient wash the glass has something to blur. Fixed, so it
+     stays put while the page scrolls and every panel picks up a
+     different part of it.                                          */
+  body{
+    margin:0;color:var(--text);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-color:var(--bg);
+    background-image:
+      radial-gradient(42vmax 42vmax at 10% -8%, var(--aur1), transparent 62%),
+      radial-gradient(34vmax 34vmax at 96% 4%,  var(--aur2), transparent 60%),
+      radial-gradient(46vmax 46vmax at 72% 98%, var(--aur3), transparent 64%);
+    background-attachment:fixed;background-repeat:no-repeat;
+  }
+
+  .wrap{max-width:780px;margin:0 auto;padding:36px 20px 96px}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:currentColor}
+
+  /* ── Glass ───────────────────────────────────────────────── */
+  .card,.note,.brand,.kicker,table{
+    -webkit-backdrop-filter:blur(20px) saturate(160%);
+    backdrop-filter:blur(20px) saturate(160%);
+  }
+
+  /* ── Brand ───────────────────────────────────────────────── */
+  .brand{display:flex;align-items:center;gap:13px;margin:0 0 34px;
+    background:var(--glass);border:1px solid var(--edge);border-radius:18px;
+    padding:12px 16px 12px 12px;box-shadow:var(--shadow)}
+  .brand .tile{width:46px;height:46px;border-radius:13px;flex:0 0 auto;
+    background:linear-gradient(135deg,#6B85FF,#2B3FD4);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px rgba(61,90,254,.38),
+               0 0 0 1px rgba(255,255,255,.14) inset}
+  .brand .name{font-weight:700;font-size:15.5px;letter-spacing:-.2px;line-height:1.28}
+  .brand .name span{display:block;color:var(--text3);font-weight:500;font-size:12.5px}
+
+  /* ── Hero ────────────────────────────────────────────────── */
+  h1{font-size:clamp(31px,6.2vw,45px);line-height:1.08;letter-spacing:-1.1px;
+    margin:0 0 15px;font-weight:800;color:var(--text)}
+  @supports ((-webkit-background-clip:text) or (background-clip:text)){
+    h1{background:linear-gradient(135deg,var(--text) 34%,var(--accent) 120%);
+      -webkit-background-clip:text;background-clip:text;color:transparent}
+  }
+  .lede{font-size:18.5px;line-height:1.55;color:var(--text2);margin:0 0 8px}
+  .lede strong{color:var(--text)}
+  .kicker{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
+    font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--accent);
+    background:var(--accentSoft);border:1px solid var(--edge);
+    padding:6px 13px;border-radius:999px;margin-bottom:18px}
+  .kicker::before{content:"";width:6px;height:6px;border-radius:50%;
+    background:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+
+  h2{font-size:21.5px;letter-spacing:-.45px;margin:46px 0 12px;font-weight:700}
+  h3{font-size:15.5px;letter-spacing:-.2px;margin:0 0 5px;font-weight:650}
+  p,li{color:var(--text2)}
+  ul{padding-left:20px;margin:12px 0}
+  li{margin:7px 0}
+  li::marker{color:var(--accent)}
+  strong{color:var(--text);font-weight:640}
+
+  /* ── Panels ──────────────────────────────────────────────── */
+  .card{background:var(--glass);border:1px solid var(--edge);border-radius:18px;
+    padding:20px 22px;margin:18px 0;box-shadow:var(--shadow);
+    transition:transform .22s ease, box-shadow .22s ease, background .22s ease}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadowUp);background:var(--glass2)}
+  .card h3{color:var(--text)}
+  .card p:last-child{margin-bottom:0}
+  .card p:first-of-type{margin-top:0}
+
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));margin:18px 0}
+  .grid .card{margin:0}
+
+  .row{display:flex;gap:13px;align-items:flex-start;padding:15px 0;
+    border-bottom:1px solid var(--edge)}
+  .row:last-child{border-bottom:0}
+  .row .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 4px var(--accentSoft);margin-top:8px;flex:0 0 auto}
+  .row .body{flex:1;min-width:0}
+  .row .body p{margin:3px 0 0;font-size:14px}
+
+  .src{font-size:12.5px;font-weight:650;color:var(--accent);margin:2px 0 4px}
+
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px;
+    display:block;overflow-x:auto;background:var(--glass);
+    border:1px solid var(--edge);border-radius:16px;box-shadow:var(--shadow)}
+  th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--edge);
+    vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  th{color:var(--text3);font-weight:650;font-size:11.5px;text-transform:uppercase;
+    letter-spacing:.5px;white-space:nowrap}
+  td{color:var(--text2)}
+  td strong{color:var(--text)}
+
+  .note{background:var(--glass2);border:1px solid var(--edge);
+    border-left:3px solid var(--accent);border-radius:6px 16px 16px 6px;
+    padding:16px 20px;margin:22px 0;font-size:14.5px;color:var(--text2);
+    box-shadow:var(--shadow)}
+  .note strong{color:var(--text)}
+
+  /* ── Footer ──────────────────────────────────────────────── */
+  .foot{margin-top:62px;padding-top:26px;color:var(--text3);font-size:13.5px;
+    border-top:1px solid transparent;
+    border-image:linear-gradient(90deg,var(--accent),transparent 70%) 1}
+  .foot a{color:var(--text2)}
+  .updated{color:var(--text3);font-size:13.5px;margin-top:-4px}
+
+  /* Motion is decoration here; nothing depends on it. */
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important}
+    .card:hover{transform:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="brand">
+  <div class="tile"><svg width="27" height="27" viewBox="0 0 1024 1024" aria-hidden="true" focusable="false"><mask id="mk" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#000"/><g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"><path d="M176 628 400 488 624 554 848 330" stroke-width="50"/><path d="M400 488 318 346" stroke="#ccc" stroke-width="28"/><path d="M624 554 706 730" stroke="#ccc" stroke-width="28"/></g><g fill="#fff"><circle cx="318" cy="346" r="42"/><circle cx="706" cy="730" r="42"/><circle cx="848" cy="330" r="78"/><circle cx="176" cy="628" r="56"/><circle cx="400" cy="488" r="64"/><circle cx="624" cy="554" r="64"/></g><g fill="#000"><circle cx="176" cy="628" r="30"/><circle cx="400" cy="488" r="38"/><circle cx="624" cy="554" r="38"/></g></mask><rect width="1024" height="1024" fill="#fff" mask="url(#mk)"/></svg></div>
+  <div class="name">Offline AI Stock Analysis<span>Every number, back to its filing</span></div>
+</div>
+<span class="kicker">iPhone &amp; iPad · iOS 17+</span>
+<h1>Every number, back to its filing.</h1>
+<p class="lede">Type a ticker. See what the company does, whether it is
+profitable, whether it is growing, and how it is priced against its own
+history — <strong>on one screen</strong>. No account, no subscription, no
+telemetry. Everything works offline once it is downloaded.</p>
+
+<div class="note"><strong>The rule the whole app rests on:</strong> the model
+never produces a number. Every figure is computed from SEC filings in code. The
+model is handed those figures and asked only for words — and what it writes is
+checked against them before you see it.</div>
+
+<h2>What it does</h2>
+<div class="grid">
+  <div class="card"><h3>Snapshot</h3>
+    <p>One screen per company: what it does, profitability, growth, and price
+    against its own multi-year median. Every cell taps through to its
+    explanation and its filing.</p></div>
+  <div class="card"><h3>Twelve years, charted</h3>
+    <p>Revenue, three margins, net income, free cash flow, share count, net
+    debt, dividends. The exact table is one tap away, the CSV one more.</p></div>
+  <div class="card"><h3>Screens</h3>
+    <p>Named, saved, re-run on demand. Describe one in plain English and the app
+    builds the conditions. Backtest any of them, with the biases printed above
+    the result.</p></div>
+  <div class="card"><h3>Watchlists</h3>
+    <p>With <em>your</em> columns. Price and daily change are two of fifty
+    available measures, not the only two.</p></div>
+  <div class="card"><h3>Portfolio</h3>
+    <p>Concentration, sector weights, a correlation matrix, position sizing, and
+    look-through: your true exposure to one company across every fund you
+    hold.</p></div>
+  <div class="card"><h3>Alerts on the business</h3>
+    <p>Margin compression, dilution, rising debt, dividend cuts — never on
+    price. Every threshold is visible and editable.</p></div>
+  <div class="card"><h3>Sixteen markets</h3>
+    <p>The US in full, plus India, the UK, Japan, Germany, Saudi Arabia, the UAE
+    and more. Prices, returns and dividends everywhere; filings where they
+    exist.</p></div>
+  <div class="card"><h3>Explanations, not jargon</h3>
+    <p>Tap any measure for what it means. Long-press any financial term anywhere
+    for a written, offline definition.</p></div>
+</div>
+
+<h2>What it will not do</h2>
+<p>Stated in the app too, on its own screen, because an app that tells you where
+its edges are is easier to rely on inside them.</p>
+<ul>
+  <li><strong>No verdicts.</strong> No buy, sell or hold. No price targets, no
+  ratings, no confidence scores. Where two readings of the same figures exist,
+  both are shown and the app takes no side.</li>
+  <li><strong>No predictions.</strong> Every figure describes something already
+  reported.</li>
+  <li><strong>No filing summaries.</strong> A 10-K is longer than this model's
+  context window, and a botched summary of a legal document is worse than
+  none.</li>
+  <li><strong>No chat box.</strong> A fixed list of questions the app can
+  actually answer.</li>
+  <li><strong>No community, no feed, no shared picks.</strong></li>
+</ul>
+
+<h2>Privacy, concretely</h2>
+<p>The App Store label says <em>Data Not Collected</em> and that is literally
+true: no analytics, no crash reporting to a third party, no advertising
+identifier, no fingerprint, no cookies. There is no account and no server
+belonging to this app. What leaves your phone is a request for a public
+company's public filings, by ticker, with no identifier attached.</p>
+
+<h2>One purchase</h2>
+<p>No subscription, no upsell, no feature held back, no data harvested to pay
+for it. Export everything at any time, in full.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:sivavimelrajhen@gmail.com">sivavimelrajhen@gmail.com</a></p>
+<div class="foot">
+  <p><strong>Offline AI Stock Analysis</strong> · Built by Sivavimelrajhen ·
+     <a href="mailto:sivavimelrajhen@gmail.com">sivavimelrajhen@gmail.com</a></p>
+  <p>Financial data from public SEC filings and a public delayed price feed.
+     This app reports what filings say. It is not investment advice, not a
+     recommendation and not a broker.</p>
+</div>
+</div>
+</body>
+</html>
